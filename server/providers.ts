@@ -83,6 +83,8 @@ async function request(
 type CatalogEntry = {
   id?: unknown;
   name?: unknown;
+  display_name?: unknown;
+  kind?: unknown;
   architecture?: {
     input_modalities?: unknown;
     output_modalities?: unknown;
@@ -118,6 +120,7 @@ async function fetchCatalog(
   key: string,
   endpoint: string,
   optional = false,
+  headers: Record<string, string> = {},
 ): Promise<CatalogEntry[]> {
   const base = baseUrl.replace(/\/$/, "");
   const initial = new URL(base + endpoint);
@@ -137,7 +140,7 @@ async function fetchCatalog(
       throw new Error("接入商返回了不安全的分页地址");
     visited.add(next.href);
     const response: Response = await fetch(next, {
-      headers: { Authorization: `Bearer ${key}` },
+      headers: { ...headers, Authorization: `Bearer ${key}` },
       redirect: "error",
       signal: AbortSignal.timeout(30_000),
     });
@@ -165,7 +168,15 @@ export async function listModels(
   const url = await validateURL(baseUrl);
   const router = type === "openrouter" || url.hostname === "openrouter.ai";
   const [general, images] = await Promise.all([
-    fetchCatalog(baseUrl, key, "/models"),
+    // Magpie hides image models from ordinary clients. This opt-in header also
+    // works with versions predating the /models?kind= query parameter.
+    fetchCatalog(
+      baseUrl,
+      key,
+      "/models",
+      false,
+      type === "magpie" ? { "X-Magpie-Drawers": "1" } : {},
+    ),
     router
       ? fetchCatalog(
           baseUrl,
@@ -188,23 +199,32 @@ export async function listModels(
         raw.id.length > 200
       )
         continue;
-      // Keep the first complete general record; the dedicated image catalog takes precedence.
-      if (!dedicated && models.has(raw.id)) continue;
+      if (
+        type === "magpie" &&
+        raw.kind !== undefined &&
+        !["chat", "text", "image"].includes(String(raw.kind))
+      )
+        continue;
+      const imageRecord = dedicated || (type === "magpie" && raw.kind === "image");
+      // An explicit image record wins when Magpie lists the same ID for chat too.
+      if (!imageRecord && models.has(raw.id)) continue;
       const outputs = modalities(raw, "output");
       const inputs = modalities(raw, "input");
       const image =
-        dedicated ||
+        imageRecord ||
         (outputs
           ? outputs.includes("image")
-          : /gpt-image|dall-e|flux|imagen|stable-diffusion|image|ideogram|recraft|seedream|riverflow|nano-banana/i.test(
-              raw.id,
-            ));
+          : type === "magpie"
+            ? false
+            : /gpt-image|dall-e|flux|imagen|stable-diffusion|image|ideogram|recraft|seedream|riverflow|nano-banana/i.test(
+                raw.id,
+              ));
+      const name = [raw.name, raw.display_name].find(
+        (value): value is string => typeof value === "string" && !!value.trim(),
+      );
       models.set(raw.id, {
         id: raw.id,
-        name: (typeof raw.name === "string" && raw.name.trim()
-          ? raw.name.trim()
-          : raw.id
-        ).slice(0, 80),
+        name: (name?.trim() || raw.id).slice(0, 80),
         kind: image ? "image" : "text",
         canEdit:
           image &&
@@ -391,6 +411,8 @@ export async function generate(
     prompt,
     n: options.count,
     size: options.size,
+    // Keep Magpie-hosted results inline, including URLs that require its gateway key.
+    ...(provider.type === "magpie" ? { response_format: "b64_json" } : {}),
     ...(options.quality !== "auto" ? { quality: options.quality } : {}),
     ...(options.background !== "auto"
       ? { background: options.background }

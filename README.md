@@ -26,7 +26,7 @@
 | **画面规格** | 支持 1:1、3:2、2:3、16:9、9:16、4:3、3:4、4:5、5:4；发送时补充目标比例、像素尺寸及已选画质和背景要求，保留原始提示词。原生参数与实际输出仍受模型能力限制。 |
 | **多模型对比** | 一次最多选择 10 个生图模型，分别展示状态与结果，失败可单独重试。 |
 | **持续修改** | 发送原始提示词、所选图片和修改要求；版本以 Tab 切换，最新修改优先展示，卡片尺寸稳定。 |
-| **自由接入** | 支持 OpenAI 兼容协议和 OpenRouter；从接入商目录选择模型，按 ID 搜索、筛选图像或文本模型。 |
+| **自由接入** | 支持 OpenAI 兼容协议、OpenRouter 和 Magpie；从接入商目录选择模型，按 ID 搜索、筛选图像或文本模型。 |
 | **费用预估** | OpenRouter 提交前显示各模型与合计 USD 预算；按明确计费单位估算，未知费用不会被当成免费。 |
 | **记住习惯** | 配置默认生图模型；浏览器优先复用上次成功提交的选择，参数未变时复用已计算的估价。 |
 | **提示词优化** | 选择文本模型后启用优化，先预览建议，再决定是否应用。 |
@@ -124,8 +124,15 @@ npm start
 | --- | --- | --- |
 | OpenAI / 兼容接入商 | `https://api.openai.com/v1` | `/images/generations`、multipart `/images/edits` |
 | OpenRouter | `https://openrouter.ai/api/v1` | 专用图像模型 `/images`；通用目录独有模型 `/chat/completions` |
+| Magpie | `http://127.0.0.1:3425/v1` | `/images/generations`、multipart `/images/edits`；请求 `response_format=b64_json` |
 
 OpenRouter 合并 `/models` 与 `/images/models`，支持同源分页并去重。模型类型优先依据输入/输出模态识别；仅支持理解图片的模型不会因此被判断为生图模型。能力缺失时使用名称推断，已选模型可调整类型和编辑能力。
+
+Magpie 的图像模型通过专用发现请求获取：服务端请求 `/models` 时携带 `X-Magpie-Drawers: 1`，以包含 `kind: image` 记录。目录识别 `display_name` 和 `modalities`，同一模型 ID 去重时优先保留图像记录。生成与编辑使用 OpenAI 兼容图片接口，并请求 Base64 图片结果。
+
+连接本机 Magpie 时，API Key 可填写本地令牌 `magpie`；连接远程 Magpie 必须填写实际的网关 API Key。本机或私有网络地址仍受现有安全限制，需要在映台服务端设置 `ALLOW_PRIVATE_PROVIDERS=true` 后重启。
+
+映台运行在容器内时，`localhost` / `127.0.0.1` 指向容器自身。若 Magpie 运行在宿主机，请使用容器可访问的宿主机地址，例如 `http://host.docker.internal:3425/v1`；Linux Docker Engine 可添加 `--add-host=host.docker.internal:host-gateway`（Compose 使用 `extra_hosts: ["host.docker.internal:host-gateway"]`）。宿主机上的 Magpie 也需监听容器可访问的地址；私有地址仍需上述环境变量。
 
 已有接入商可直接修改名称、调整或删除已选模型并保存，不必重新获取目录。新增模型或更换地址、协议时需要获取目录；更换地址需要重新输入密钥。列表中的模型不一定对当前账号开放，具体参数支持由接入商决定。
 

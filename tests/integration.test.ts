@@ -55,6 +55,30 @@ test(
           res.end(JSON.stringify({ error: { message: "unauthorized" } }));
           return;
         }
+        if (req.url?.startsWith("/magpie/models")) {
+          const text = {
+            id: "relay/vision-image-reader",
+            display_name: "Vision reader",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          };
+          if (req.headers["x-magpie-drawers"] !== "1") {
+            res.end(JSON.stringify({ data: [text] }));
+          } else if (req.url.includes("?page=2")) {
+            res.end(JSON.stringify({ data: [
+              { id: "relay/canvas", kind: "image", display_name: "Canvas",
+                modalities: { input: ["text", "image"], output: ["image"] } },
+              { id: "relay/poster", kind: "image", display_name: "Poster",
+                modalities: { input: ["text"], output: ["image"] } },
+              { id: "relay/movie", kind: "video" },
+            ] }));
+          } else {
+            res.end(JSON.stringify({
+              data: [text, { id: "relay/canvas", kind: "chat" }],
+              links: { next: "?page=2" },
+            }));
+          }
+          return;
+        }
         if (req.url === "/v1/images/models") {
           res.end(
             JSON.stringify({
@@ -470,6 +494,68 @@ test(
         ).kind,
         "image",
       );
+      const magpieBase = `http://127.0.0.1:${upstreamPort}/magpie`;
+      const ordinaryMagpie = await call("/providers/models", "POST", {
+        baseUrl: magpieBase, apiKey: key,
+      }, cookie);
+      assert.equal(ordinaryMagpie.data.models.length, 1);
+      const magpieCatalog = await call("/providers/models", "POST", {
+        baseUrl: magpieBase, apiKey: key, type: "magpie",
+      }, cookie);
+      assert.equal(magpieCatalog.status, 200);
+      assert.deepEqual(magpieCatalog.data.models, [
+        { id: "relay/canvas", name: "Canvas", kind: "image", canEdit: true },
+        { id: "relay/poster", name: "Poster", kind: "image", canEdit: false },
+        { id: "relay/vision-image-reader", name: "Vision reader", kind: "text", canEdit: false },
+      ]);
+      const magpieSaved = await call("/providers", "POST", {
+        name: "Fixture Magpie", type: "magpie", baseUrl: magpieBase,
+        apiKey: key, models: magpieCatalog.data.models,
+      }, cookie);
+      assert.equal(magpieSaved.status, 200);
+      const magpie = magpieSaved.data.providers.find(
+        (p: { type: string }) => p.type === "magpie",
+      );
+      assert.ok(!JSON.stringify(magpieSaved.data).includes(key));
+      const magpieRefresh = await call("/providers/models", "POST", {
+        providerId: magpie.id, baseUrl: magpieBase,
+      }, cookie);
+      assert.deepEqual(magpieRefresh.data.models, magpieCatalog.data.models);
+      const magpieCreated = await call("/tasks", "POST", {
+        prompt: "magpie-generation", options: defaultOptions,
+        models: [{ providerId: magpie.id, modelId: "relay/canvas" }],
+      }, cookie);
+      assert.equal(magpieCreated.status, 201);
+      async function magpieSettled(): Promise<Task> {
+        for (let i = 0; i < 80; i++) {
+          const all = await call("/tasks", "GET", undefined, cookie);
+          const task = all.data.find((t: Task) => t.id === magpieCreated.data.id);
+          if (task && taskStatus(task) !== "running") return task;
+          await sleep(100);
+        }
+        throw new Error("Magpie task timeout");
+      }
+      let magpieTask = await magpieSettled();
+      assert.equal(taskStatus(magpieTask), "completed");
+      const magpieBody = JSON.parse(requests.find(
+        (r) => r.url === "/magpie/images/generations",
+      )!.body);
+      assert.equal(magpieBody.model, "relay/canvas");
+      assert.equal(magpieBody.response_format, "b64_json");
+      const magpieEdit = await call(`/tasks/${magpieTask.id}/edit`, "POST", {
+        resultId: magpieTask.results[0].id, image: magpieTask.results[0].images[0],
+        changes: "magpie-edit",
+      }, cookie);
+      assert.equal(magpieEdit.status, 201);
+      magpieTask = await magpieSettled();
+      assert.equal(magpieTask.results[1].status, "completed");
+      const magpieEditRequest = requests.find((r) => r.url === "/magpie/images/edits")!;
+      assert.match(magpieEditRequest.contentType, /multipart\/form-data/);
+      assert.match(magpieEditRequest.body, /name="model"\r\n\r\nrelay\/canvas/);
+      assert.match(magpieEditRequest.body, /name="response_format"\r\n\r\nb64_json/);
+      assert.match(magpieEditRequest.body, /filename="source.png"/);
+      assert.equal((await call(`/tasks/${magpieTask.id}`, "DELETE", undefined, cookie)).status, 200);
+      assert.equal((await call(`/providers/${magpie.id}`, "DELETE", undefined, cookie)).status, 200);
       const routerCatalog = await call(
         "/providers/models",
         "POST",

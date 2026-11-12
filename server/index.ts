@@ -191,7 +191,7 @@ const modelSchema = z.object({
 const providerSchema = z
   .object({
     name: z.string().trim().min(1).max(60),
-    type: z.enum(["openai", "openrouter"]),
+    type: z.enum(["openai", "openrouter", "magpie"]),
     baseUrl: z.string().url().max(500),
     apiKey: z.string().trim().max(1000).optional(),
     models: z.array(modelSchema),
@@ -202,7 +202,7 @@ const providerSchema = z
     "模型 ID 不能重复",
   );
 const connectionSchema = z.object({
-  type: z.enum(["openai", "openrouter"]).optional(),
+  type: z.enum(["openai", "openrouter", "magpie"]).optional(),
   providerId: z.string().uuid().optional(),
   baseUrl: z.string().url().max(500),
   apiKey: z.string().trim().max(1000).optional(),

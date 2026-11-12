@@ -2030,7 +2030,11 @@ function SettingsPage({
               <div>
                 <h3 title={p.name}>{p.name}</h3>
                 <span>
-                  {p.type === "openai" ? "OpenAI 兼容协议" : "OpenRouter 协议"}
+                  {p.type === "openai"
+                    ? "OpenAI 兼容协议"
+                    : p.type === "magpie"
+                      ? "Magpie 协议"
+                      : "OpenRouter 协议"}
                 </span>
               </div>
             </div>
@@ -2073,7 +2077,7 @@ function SettingsPage({
           <button className="provider-empty" onClick={() => edit("new")}>
             <Plus size={20} />
             <span>添加第一个接入商</span>
-            <small>连接 OpenAI、OpenRouter 或兼容接入商</small>
+            <small>连接 OpenAI、OpenRouter、Magpie 或兼容接入商</small>
           </button>
         )}
       </div>
@@ -2194,7 +2198,7 @@ function ProviderForm({
   demo: boolean;
 }) {
   const [name, setName] = useState(provider?.name || "");
-  const [type, setType] = useState<"openai" | "openrouter">(
+  const [type, setType] = useState<Provider["type"]>(
     provider?.type || "openai",
   );
   const [baseUrl, setBaseUrl] = useState(
@@ -2300,7 +2304,13 @@ function ProviderForm({
               maxLength={60}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="例如：我的 OpenAI"
+              placeholder={
+                type === "magpie"
+                  ? "例如：我的 Magpie"
+                  : type === "openrouter"
+                    ? "例如：我的 OpenRouter"
+                    : "例如：我的 OpenAI"
+              }
               disabled={busy || loading}
             />
           </label>
@@ -2310,18 +2320,21 @@ function ProviderForm({
               value={type}
               disabled={busy || loading}
               onChange={(e) => {
-                const t = e.target.value as "openai" | "openrouter";
+                const t = e.target.value as Provider["type"];
                 setType(t);
                 setBaseUrl(
                   t === "openai"
                     ? "https://api.openai.com/v1"
-                    : "https://openrouter.ai/api/v1",
+                    : t === "magpie"
+                      ? "http://127.0.0.1:3425/v1"
+                      : "https://openrouter.ai/api/v1",
                 );
                 invalidate();
               }}
             >
               <option value="openai">OpenAI / 兼容接入商</option>
               <option value="openrouter">OpenRouter</option>
+              <option value="magpie">Magpie</option>
             </select>
           </label>
         </div>
@@ -2355,6 +2368,13 @@ function ProviderForm({
             disabled={busy || loading}
           />
         </label>
+        {type === "magpie" && (
+          <p className="field-hint">
+            图像模型通过 Magpie 专用发现请求获取。连接本机时 API Key 可填写
+            magpie，远程连接需填写实际网关密钥。本机或私有网络连接需在服务端设置
+            ALLOW_PRIVATE_PROVIDERS=true。
+          </p>
+        )}
         <div className="field-label">
           <label>
             可用模型 <span className="optional">已选 {models.length} 个</span>

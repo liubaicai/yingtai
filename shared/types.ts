@@ -8,7 +8,7 @@ export type Model = {
 export type Provider = {
   id: string;
   name: string;
-  type: "openai" | "openrouter";
+  type: "openai" | "openrouter" | "magpie";
   baseUrl: string;
   models: Model[];
   hasKey: boolean;
