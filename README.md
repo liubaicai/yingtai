@@ -126,7 +126,7 @@ npm start
 | OpenRouter | `https://openrouter.ai/api/v1` | 专用图像模型 `/images`；通用目录独有模型 `/chat/completions` |
 | Magpie | `http://127.0.0.1:3425/v1` | `/images/generations`、multipart `/images/edits`；请求 `response_format=b64_json` |
 
-OpenRouter 合并 `/models` 与 `/images/models`，支持同源分页并去重。模型类型优先依据输入/输出模态识别；仅支持理解图片的模型不会因此被判断为生图模型。能力缺失时使用名称推断，已选模型可调整类型和编辑能力。
+OpenRouter 图片接口使用 `aspect_ratio` 传递画面比例，目标像素尺寸保留在提示词中，避免与 `size` 参数冲突；实际输出尺寸由模型决定。OpenRouter 合并 `/models` 与 `/images/models`，支持同源分页并去重。模型类型优先依据输入/输出模态识别；仅支持理解图片的模型不会因此被判断为生图模型。能力缺失时使用名称推断，已选模型可调整类型和编辑能力。
 
 Magpie 的图像模型通过专用发现请求获取：服务端请求 `/models` 时携带 `X-Magpie-Drawers: 1`，以包含 `kind: image` 记录。目录识别 `display_name` 和 `modalities`，同一模型 ID 去重时优先保留图像记录。生成与编辑使用 OpenAI 兼容图片接口，并请求 Base64 图片结果。
 

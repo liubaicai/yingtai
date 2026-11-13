@@ -28,6 +28,17 @@ test(
         contentType: req.headers["content-type"] || "",
       });
       res.setHeader("Content-Type", "application/json");
+      if (req.url === "/v1/images") {
+        const parsed = JSON.parse(body);
+        if (/^\d+x\d+$/.test(parsed.size || "") &&
+            (parsed.aspect_ratio !== undefined || parsed.resolution !== undefined)) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: {
+            message: "MiniMax: an explicit WIDTHxHEIGHT size cannot be combined with aspect_ratio or resolution",
+          } }));
+          return;
+        }
+      }
       if (req.url === "/v1/images/models/router-model/endpoints") {
         assert.equal(
           req.headers.authorization,
@@ -917,7 +928,16 @@ test(
       const nativeBody = JSON.parse(nativeEdit.body);
       assert.equal(nativeBody.model, "router-model");
       assert.equal(nativeBody.aspect_ratio, "16:9");
-      assert.equal(nativeBody.size, "1536x864");
+      assert.equal(nativeBody.size, undefined);
+      assert.equal(nativeBody.resolution, undefined);
+      const nativeGeneration = JSON.parse(requests.find(
+        (r) => r.url === "/v1/images" && r.body.includes("原始测试提示词") &&
+          !JSON.parse(r.body).input_references,
+      )!.body);
+      assert.equal(nativeGeneration.aspect_ratio, "16:9");
+      assert.equal(nativeGeneration.size, undefined);
+      assert.equal(nativeGeneration.resolution, undefined);
+      assert.match(nativeGeneration.prompt, /1536 × 864/);
       assert.equal(nativeBody.quality, "high");
       assert.match(nativeBody.prompt, /高画质/);
       const directBody = JSON.parse(requests.find(

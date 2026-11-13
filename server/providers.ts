@@ -339,8 +339,9 @@ export async function generate(
           model,
           prompt,
           n: 1,
+          // Explicit pixel sizes conflict with aspect_ratio on MiniMax and other
+          // image providers. Keep the ratio native and the target pixels in prompt.
           aspect_ratio: aspectRatio(options.size),
-          size: options.size,
           ...(options.quality !== "auto" ? { quality: options.quality } : {}),
           ...(options.background !== "auto"
             ? { background: options.background }
